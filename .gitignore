@@ -1,0 +1,40 @@
+# .NET / Visual Studio
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.cache
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env/
+.venv/
+venv/
+ENV/
+
+# Node
+node_modules/
+
+# VS Code
+.vscode/
+
+# OS junk
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+
+# Coverage / test artifacts
+coverage/
+.dist/
+
+# Temporary files
+*.tmp
+*.swp

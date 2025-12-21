@@ -1,0 +1,26 @@
+Metadata-Version: 2.4
+Name: recepai_shared
+Version: 0.1.0
+Summary: RecepAI shared Python package for config, logging, and tracing placeholders
+Author: RecepAI
+License: Proprietary
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic>=2.6
+Requires-Dist: pydantic-settings>=2.0
+
+# recepai_shared (Python)
+
+Shared infrastructure package for the RecepAI Python services.
+
+## Editable install (from repo root)
+Activate the virtual environment, then install in editable mode:
+```powershell
+& .\.venv\Scripts\Activate.ps1
+python -m pip install -e .\shared\python\recepai_shared
+```
+
+After installation, imports like the following should work:
+```python
+from recepai_shared import settings, get_logger
+```
