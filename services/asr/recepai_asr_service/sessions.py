@@ -55,6 +55,18 @@ class SessionStore:
         for sid in expired:
             self._sessions.pop(sid, None)
 
+    def active_session_count(self) -> int:
+        """Return count of active (non-expired, non-finalized) sessions.
+
+        Read-only: does not expose internal session storage.
+        """
+
+        self.cleanup_expired()
+        # Iterate over a snapshot view to avoid issues if the dict changes
+        # during iteration in concurrent environments.
+        sessions = list(self._sessions.values())
+        return sum(1 for s in sessions if not s.finalized)
+
     def start_session(self, session_id: str, turn_id: Optional[str], fmt: str, sample_rate: int, channels: int) -> AsrSessionState:
         if fmt != "pcm16":
             raise ValueError("Only format 'pcm16' is supported")

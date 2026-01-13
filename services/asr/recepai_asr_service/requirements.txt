@@ -1,5 +1,6 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pydantic>=2.6
+prometheus-client>=0.20.0
 # Editable install of local shared package; ensure the path exists
 -e ../../../shared/python/recepai_shared/

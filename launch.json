@@ -1,0 +1,15 @@
+{
+  "configurations": [
+    {
+      "name": "Python: LLM Orchestrator",
+      "type": "python",
+      "request": "launch",
+      "program": "main.py",
+      "env": {
+        "OPENAI_API_KEY": "${env:OPENAI_API_KEY}",
+        "RECEPAI_LLM_MODEL": "gpt-4o-mini",
+        "RECEPAI_LOG_LEVEL": "DEBUG"
+      }
+    }
+  ]
+}
