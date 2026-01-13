@@ -3,7 +3,7 @@ import time
 import uuid
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from recepai_shared import settings, get_logger
 from recepai_shared.logging_utils import log_extra
@@ -89,8 +89,13 @@ class TranscribeResponse(BaseModel):
 
 
 @app.post("/stt/transcribe", response_model=TranscribeResponse)
-async def stt_transcribe(req: TranscribeRequest):
-    request_id = str(uuid.uuid4())
+async def stt_transcribe(req: TranscribeRequest, request: Request):
+    # Correlation fields: prefer headers, fallback to payload, generate requestId if absent
+    request_id = request.headers.get("X-RecepAI-RequestId") or str(uuid.uuid4())
+    session_id: Optional[str] = request.headers.get("X-RecepAI-SessionId") or req.sessionId
+    turn_id: Optional[str] = request.headers.get("X-RecepAI-TurnId") or req.turnId
+    corr: Optional[str] = request.headers.get("X-RecepAI-Corr")
+
     endpoint = "/stt/transcribe"
     started = time.perf_counter()
     status = "200"
@@ -108,8 +113,9 @@ async def stt_transcribe(req: TranscribeRequest):
             "Transcribe request received",
             extra=log_extra(
                 requestId=request_id,
-                sessionId=req.sessionId,
-                turnId=req.turnId,
+                sessionId=session_id,
+                turnId=turn_id,
+                corr=corr,
                 service="recepai_asr_service",
                 format=req.format,
                 sampleRate=req.sampleRate,
@@ -199,8 +205,13 @@ _store = SessionStore(ttl_seconds=ttl, max_bytes_default=max_bytes)
 
 
 @app.post("/stt/session/start", response_model=SttSessionStartResponse)
-async def stt_session_start(req: SttSessionStartRequest):
-    request_id = str(uuid.uuid4())
+async def stt_session_start(req: SttSessionStartRequest, request: Request):
+    # Correlation fields: prefer headers, fallback to payload, generate requestId if absent
+    request_id = request.headers.get("X-RecepAI-RequestId") or str(uuid.uuid4())
+    session_id: Optional[str] = request.headers.get("X-RecepAI-SessionId") or req.sessionId
+    turn_id: Optional[str] = request.headers.get("X-RecepAI-TurnId") or req.turnId
+    corr: Optional[str] = request.headers.get("X-RecepAI-Corr")
+
     endpoint = "/stt/session/start"
     started = time.perf_counter()
     status = "200"
@@ -216,8 +227,9 @@ async def stt_session_start(req: SttSessionStartRequest):
             "ASR session started",
             extra=log_extra(
                 requestId=request_id,
-                sessionId=req.sessionId,
-                turnId=req.turnId,
+                sessionId=session_id,
+                turnId=turn_id,
+                corr=corr,
                 service="recepai_asr_service",
                 asrSessionId=state.asr_session_id,
                 ttl=ttl,
@@ -238,8 +250,11 @@ async def stt_session_start(req: SttSessionStartRequest):
 
 
 @app.post("/stt/session/{asrSessionId}/chunk", response_model=SttChunkResponse)
-async def stt_session_chunk(asrSessionId: str, req: SttChunkRequest):
-    request_id = str(uuid.uuid4())
+async def stt_session_chunk(asrSessionId: str, req: SttChunkRequest, request: Request):
+    # Correlation fields: prefer headers, generate requestId if absent
+    request_id = request.headers.get("X-RecepAI-RequestId") or str(uuid.uuid4())
+    corr: Optional[str] = request.headers.get("X-RecepAI-Corr")
+
     endpoint = "/stt/session/{asrSessionId}/chunk"
     started = time.perf_counter()
     status = "200"
@@ -263,6 +278,7 @@ async def stt_session_chunk(asrSessionId: str, req: SttChunkRequest):
             "ASR chunk accepted",
             extra=log_extra(
                 requestId=request_id,
+                corr=corr,
                 service="recepai_asr_service",
                 asrSessionId=asrSessionId,
                 sequence=req.sequence,
@@ -284,8 +300,11 @@ async def stt_session_chunk(asrSessionId: str, req: SttChunkRequest):
 
 
 @app.post("/stt/session/{asrSessionId}/finalize", response_model=SttFinalizeResponse)
-async def stt_session_finalize(asrSessionId: str):
-    request_id = str(uuid.uuid4())
+async def stt_session_finalize(asrSessionId: str, request: Request):
+    # Correlation fields: prefer headers, generate requestId if absent
+    request_id = request.headers.get("X-RecepAI-RequestId") or str(uuid.uuid4())
+    corr: Optional[str] = request.headers.get("X-RecepAI-Corr")
+
     endpoint = "/stt/session/{asrSessionId}/finalize"
     started = time.perf_counter()
     status = "200"
@@ -300,7 +319,7 @@ async def stt_session_finalize(asrSessionId: str):
 
         logger.debug(
             "ASR session finalized",
-            extra=log_extra(requestId=request_id, service="recepai_asr_service", asrSessionId=asrSessionId),
+            extra=log_extra(requestId=request_id, corr=corr, service="recepai_asr_service", asrSessionId=asrSessionId),
         )
         return SttFinalizeResponse(**result)
     except HTTPException as e:

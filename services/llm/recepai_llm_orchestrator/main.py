@@ -127,19 +127,27 @@ class TurnRequest(BaseModel):
 
 @app.post("/llm/turn")
 async def llm_turn(body: TurnRequest, request: Request):
-    request_id = str(uuid.uuid4())
-    # TODO: Replace with real LLM tool-calling and action planning logic.
-    # This is a placeholder for Phase 1 scaffolding only.
+    # Correlation fields: prefer headers, fallback to payload, generate requestId if absent
+    request_id = request.headers.get("X-RecepAI-RequestId") or str(uuid.uuid4())
+    session_id: Optional[str] = request.headers.get("X-RecepAI-SessionId")
+    turn_id: Optional[str] = request.headers.get("X-RecepAI-TurnId")
+    corr: Optional[str] = request.headers.get("X-RecepAI-Corr")
 
-    session_id: Optional[str] = None
-    turn_id: Optional[str] = None
+    # Fallback to payload if headers not present
     try:
         raw = await request.json()
         if isinstance(raw, dict):
-            session_id = raw.get("sessionId")
-            turn_id = raw.get("turnId")
+            if not session_id:
+                session_id = raw.get("sessionId")
+            if not turn_id:
+                turn_id = raw.get("turnId")
+            if not corr:
+                corr = raw.get("corr") or raw.get("correlationId")
     except Exception:
         pass
+
+    # TODO: Replace with real LLM tool-calling and action planning logic.
+    # This is a placeholder for Phase 1 scaffolding only.
 
     logger.debug(
         "Received user_text for placeholder turn",
@@ -306,20 +314,26 @@ async def llm_turn_stream(body: TurnRequest, request: Request):
     Each item has shape: { "text": str, "isFinal": bool, "source": "llm" }
     Exactly one final chunk is emitted. Client disconnect triggers cancellation.
     """
-    request_id = str(uuid.uuid4())
-    cancellation_event = asyncio.Event()
+    # Correlation fields: prefer headers, fallback to payload, generate requestId if absent
+    request_id = request.headers.get("X-RecepAI-RequestId") or str(uuid.uuid4())
+    session_id: Optional[str] = request.headers.get("X-RecepAI-SessionId")
+    turn_id: Optional[str] = request.headers.get("X-RecepAI-TurnId")
+    corr: Optional[str] = request.headers.get("X-RecepAI-Corr")
 
-    session_id: Optional[str] = None
-    turn_id: Optional[str] = None
-    corr: Optional[str] = None
+    # Fallback to payload if headers not present
     try:
         raw = await request.json()
         if isinstance(raw, dict):
-            session_id = raw.get("sessionId")
-            turn_id = raw.get("turnId")
-            corr = raw.get("corr") or raw.get("correlationId")
+            if not session_id:
+                session_id = raw.get("sessionId")
+            if not turn_id:
+                turn_id = raw.get("turnId")
+            if not corr:
+                corr = raw.get("corr") or raw.get("correlationId")
     except Exception:
         pass
+
+    cancellation_event = asyncio.Event()
 
     # Preserve existing placeholder behavior if sessionId/turnId are not provided.
     effective_session_id = session_id or "session-placeholder"
