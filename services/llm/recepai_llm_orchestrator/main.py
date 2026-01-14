@@ -23,7 +23,31 @@ except Exception:  # pragma: no cover
 
 app = FastAPI(title="recepai_llm_orchestrator", version="0.1.0")
 logger = get_logger("recepai_llm_orchestrator")
-_openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# Validate OPENAI_API_KEY at startup
+_OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not _OPENAI_API_KEY:
+    logger.error(
+        "startup_config_error",
+        extra=log_extra(
+            service="recepai_llm_orchestrator",
+            error="OPENAI_API_KEY environment variable is not set",
+            fix="Set OPENAI_API_KEY before starting the service",
+        ),
+    )
+else:
+    # Log that API key is configured (without revealing the key)
+    key_preview = _OPENAI_API_KEY[:7] + "***" if len(_OPENAI_API_KEY) > 10 else "***"
+    logger.info(
+        "startup_config_ok",
+        extra=log_extra(
+            service="recepai_llm_orchestrator",
+            openai_api_key_configured=True,
+            key_preview=key_preview,
+        ),
+    )
+
+_openai_client = AsyncOpenAI(api_key=_OPENAI_API_KEY)
 _MODEL_NAME = os.getenv("RECEPAI_LLM_MODEL", "gpt-4o-mini")
 
 _BACKPRESSURE_WARN_MS = 2000
@@ -146,21 +170,41 @@ async def llm_turn(body: TurnRequest, request: Request):
     except Exception:
         pass
 
-    # TODO: Replace with real LLM tool-calling and action planning logic.
-    # This is a placeholder for Phase 1 scaffolding only.
-
-    logger.debug(
-        "Received user_text for placeholder turn",
+    # Log inbound request with safe preview
+    user_text_preview = body.user_text[:60] + "..." if len(body.user_text) > 60 else body.user_text
+    logger.info(
+        "llm_turn_request",
         extra=log_extra(
             requestId=request_id,
             sessionId=session_id,
             turnId=turn_id,
+            corr=corr,
             service="recepai_llm_orchestrator",
-            len=len(body.user_text),
+            user_text_len=len(body.user_text),
+            user_text_preview=user_text_preview,
+            endpoint="/llm/turn",
         ),
     )
+
+    # TODO: Replace with real LLM tool-calling and action planning logic.
+    # This is a placeholder for Phase 1 scaffolding only.
+    
+    response_text = "This is a placeholder response."
+    logger.info(
+        "llm_turn_response",
+        extra=log_extra(
+            requestId=request_id,
+            sessionId=session_id,
+            turnId=turn_id,
+            corr=corr,
+            service="recepai_llm_orchestrator",
+            agent_text_len=len(response_text),
+            endpoint="/llm/turn",
+        ),
+    )
+    
     return {
-        "agentText": "This is a placeholder response.",
+        "agentText": response_text,
         "actions": [],
     }
 
@@ -188,15 +232,19 @@ async def stream_llm_text(
     exactly one final authoritative chunk upon normal completion.
     Cancellation immediately stops streaming and prevents final emission.
     """
-    logger.debug(
-        "LLM stream start",
+    # Log request start with safe preview
+    user_text_preview = user_text[:60] + "..." if len(user_text) > 60 else user_text
+    logger.info(
+        "llm_stream_request",
         extra=log_extra(
             requestId=request_id,
             sessionId=session_id,
             turnId=turn_id,
             service="recepai_llm_orchestrator",
-            len=len(user_text),
+            user_text_len=len(user_text),
+            user_text_preview=user_text_preview,
             model=_MODEL_NAME,
+            api_key_configured=bool(_OPENAI_API_KEY),
         ),
     )
 
@@ -272,16 +320,41 @@ async def stream_llm_text(
             final_text = getattr(final_response, "output_text", None)
             if not final_text:
                 final_text = "".join(full_text_parts)
-            logger.debug(
-                "LLM stream completion",
+            
+            # Log final text with safe preview
+            final_text_preview = final_text[:80] + "..." if len(final_text) > 80 else final_text
+            is_empty = not final_text or final_text.strip() == ""
+            logger.info(
+                "llm_stream_response",
                 extra=log_extra(
                     requestId=request_id,
                     sessionId=session_id,
                     turnId=turn_id,
                     service="recepai_llm_orchestrator",
-                    totalChars=len(final_text),
+                    final_text_len=len(final_text),
+                    final_text_preview=final_text_preview,
+                    is_empty=is_empty,
+                    model=_MODEL_NAME,
                 ),
             )
+            
+            # CRITICAL: If final text is empty, this is an error condition
+            if is_empty:
+                logger.error(
+                    "llm_empty_response",
+                    extra=log_extra(
+                        requestId=request_id,
+                        sessionId=session_id,
+                        turnId=turn_id,
+                        service="recepai_llm_orchestrator",
+                        error="LLM returned empty response",
+                        model=_MODEL_NAME,
+                        chunks_received=len(full_text_parts),
+                    ),
+                )
+                # Raise exception so Gateway can handle as error instead of sending empty agent_text
+                raise RuntimeError(f"LLM returned empty response (model={_MODEL_NAME}, chunks={len(full_text_parts)})")
+            
             yield AgentTextChunk(text=final_text, is_final=True, source="llm")
 
     except asyncio.CancelledError:
@@ -293,15 +366,18 @@ async def stream_llm_text(
     except Exception as e:
         type_name = type(e).__name__ or "Exception"
         _LLM_STREAM_ERRORS_TOTAL.labels(type=type_name).inc()
+        error_message = str(e)[:200]  # Truncate to avoid logging sensitive data
         logger.error(
-            "LLM stream failed",
+            "llm_stream_error",
             extra=log_extra(
                 requestId=request_id,
                 sessionId=session_id,
                 turnId=turn_id,
                 service="recepai_llm_orchestrator",
-                error=str(e),
+                error_type=type_name,
+                error_message=error_message,
                 model=_MODEL_NAME,
+                api_key_configured=bool(_OPENAI_API_KEY),
             ),
         )
         raise
@@ -350,6 +426,8 @@ async def llm_turn_stream(body: TurnRequest, request: Request):
 
     _LLM_STREAM_STARTS_TOTAL.labels(model=_MODEL_NAME).inc()
 
+    # Log inbound streaming request with safe preview
+    user_text_preview = body.user_text[:60] + "..." if len(body.user_text) > 60 else body.user_text
     logger.info(
         "stream_start",
         extra=log_extra(
@@ -358,6 +436,10 @@ async def llm_turn_stream(body: TurnRequest, request: Request):
             turnId=turn_id,
             corr=corr,
             service="recepai_llm_orchestrator",
+            user_text_len=len(body.user_text),
+            user_text_preview=user_text_preview,
+            model=_MODEL_NAME,
+            endpoint="/llm/turn/stream",
         ),
     )
 
@@ -384,7 +466,24 @@ async def llm_turn_stream(body: TurnRequest, request: Request):
     monitor_task = asyncio.create_task(monitor_disconnect())
 
     async def ndjson_stream():
+        nonlocal end_reason
+        nonlocal first_ndjson_ms_value, ttft_ms_value, delta_chunks, first_delta_logged
         _LLM_ACTIVE_STREAMS.inc()
+        
+        # Log stream start with correlation IDs
+        logger.info(
+            "ndjson_stream_start",
+            extra=log_extra(
+                requestId=request_id,
+                sessionId=session_id,
+                turnId=turn_id,
+                corr=corr,
+                service="recepai_llm_orchestrator",
+                model=_MODEL_NAME,
+            ),
+        )
+        
+        first_yield = True
         try:
             async for chunk in stream_llm_text(
                 request_id=request_id,
@@ -397,7 +496,6 @@ async def llm_turn_stream(body: TurnRequest, request: Request):
                 if "t_first_ndjson_write" not in timings:
                     timings["t_first_ndjson_write"] = time.perf_counter()
                     first_ndjson_ms_value_local = int((timings["t_first_ndjson_write"] - t_stream_enter) * 1000)
-                    nonlocal first_ndjson_ms_value
                     first_ndjson_ms_value = first_ndjson_ms_value_local
                     _LLM_FIRST_NDJSON_MS.labels(model=_MODEL_NAME).observe(first_ndjson_ms_value_local)
 
@@ -409,7 +507,6 @@ async def llm_turn_stream(body: TurnRequest, request: Request):
                         t_first_token_delta = time.perf_counter()
                         timings["t_first_token_delta"] = t_first_token_delta
                         ttft_ms = int((t_first_token_delta - t_stream_enter) * 1000)
-                        nonlocal ttft_ms_value
                         ttft_ms_value = ttft_ms
                         _LLM_TTFT_MS.labels(model=_MODEL_NAME).observe(ttft_ms)
                         logger.info(
@@ -424,6 +521,22 @@ async def llm_turn_stream(body: TurnRequest, request: Request):
                             ),
                         )
                 obj = {"text": chunk.text, "isFinal": chunk.is_final, "source": chunk.source}
+
+                # Log first yield to confirm streaming started successfully
+                if first_yield:
+                    first_yield = False
+                    logger.info(
+                        "ndjson_first_yield",
+                        extra=log_extra(
+                            requestId=request_id,
+                            sessionId=session_id,
+                            turnId=turn_id,
+                            corr=corr,
+                            service="recepai_llm_orchestrator",
+                            is_final=chunk.is_final,
+                            text_len=len(chunk.text),
+                        ),
+                    )
 
                 # Backpressure proxy: measure time until the generator is resumed
                 # after yielding a chunk. This is log-only and does not alter output.
@@ -449,6 +562,22 @@ async def llm_turn_stream(body: TurnRequest, request: Request):
                 end_reason = "client_disconnect"
             raise
         except Exception as e:
+            # Log exception with type and message
+            exception_type = type(e).__name__
+            exception_msg = str(e)[:200]
+            logger.error(
+                "ndjson_stream_exception",
+                extra=log_extra(
+                    requestId=request_id,
+                    sessionId=session_id,
+                    turnId=turn_id,
+                    corr=corr,
+                    service="recepai_llm_orchestrator",
+                    exception_type=exception_type,
+                    exception_message=exception_msg,
+                ),
+            )
+            
             if end_reason is None:
                 if isinstance(e, TimeoutError):
                     end_reason = "timeout"
@@ -456,7 +585,15 @@ async def llm_turn_stream(body: TurnRequest, request: Request):
                     end_reason = "upstream_error"
                 else:
                     end_reason = "internal_error"
-            raise
+            
+            # Yield one final error NDJSON object to prevent premature response ending
+            # This ensures the Gateway receives a valid stream termination instead of ResponseEnded
+            error_obj = {
+                "type": "error",
+                "code": "llm_stream_error",
+                "message": f"{exception_type}: {exception_msg}"
+            }
+            yield (json.dumps(error_obj) + "\n").encode("utf-8")
         finally:
             monitor_task.cancel()
             timings["t_stream_end"] = time.perf_counter()
