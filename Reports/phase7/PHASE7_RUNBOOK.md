@@ -173,6 +173,13 @@ curl -X POST http://localhost:5102/llm/turn/stream `
   --no-buffer
 ```
 
+# Alternative if the handler expects camelCase:
+curl -X POST http://localhost:5102/llm/turn/stream `
+  -H "Content-Type: application/json" `
+  -d '{"userText":"Hello, what is 2+2?","sessionId":"test-sess-001","turnId":"turn-001"}' `
+  --no-buffer
+
+
 **Expected Output** (NDJSON, one object per line):
 ```json
 {"text":"token1","isFinal":false,"source":"llm"}
