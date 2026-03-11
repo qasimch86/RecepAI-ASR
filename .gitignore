@@ -14,10 +14,20 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
 .env/
+.env
+.recepai.config.json
+recepai.config.json
 .venv/
 venv/
 ENV/
+
+# Local-only overrides (do not commit)
+shared/python/recepai_shared/src/recepai_shared/local_config.py
+
+# Scratch/legacy copies
+gateway_WRONG/
 
 # Node
 node_modules/

@@ -2,5 +2,12 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pydantic>=2.6
 prometheus-client>=0.20.0
+
+# Phase 11A: local Whisper ASR backend (CPU-only is fine)
+faster-whisper>=1.1.1
+numpy>=1.26
+
+# Note: This service accepts raw PCM16 mono 16k (base64) and does NOT require ffmpeg.
+# If you later extend it to accept audio files/containers, install ffmpeg and consider adding soundfile.
 # Editable install of local shared package; ensure the path exists
 -e ../../../shared/python/recepai_shared/

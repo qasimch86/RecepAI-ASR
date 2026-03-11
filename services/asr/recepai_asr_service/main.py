@@ -16,7 +16,7 @@ from .sessions import (
     TooLarge,
 )
 
-from .backend import get_backend
+from .backend import get_backend, AudioValidationError
 
 
 app = FastAPI(title="recepai_asr_service", version="0.1.0")
@@ -103,6 +103,12 @@ async def stt_transcribe(req: TranscribeRequest, request: Request):
         if req.format != "pcm16":
             raise HTTPException(status_code=400, detail="Only format 'pcm16' is supported in Phase 4")
 
+        if req.sampleRate != 16000 or req.channels != 1:
+            raise HTTPException(
+                status_code=422,
+                detail="Only 16kHz mono PCM16 is supported (sampleRate=16000, channels=1)",
+            )
+
         # Decode base64
         try:
             audio_bytes = base64.b64decode(req.audioBase64, validate=True)
@@ -136,9 +142,12 @@ async def stt_transcribe(req: TranscribeRequest, request: Request):
             channels=req.channels,
         )
 
-        logger.debug("Transcribe response (mock)", extra=result)
+        logger.debug("Transcribe response", extra=result)
 
         return TranscribeResponse(**result)
+    except AudioValidationError as e:
+        status = str(e.status_code)
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
     except HTTPException as e:
         status = str(e.status_code)
         raise
@@ -219,6 +228,12 @@ async def stt_session_start(req: SttSessionStartRequest, request: Request):
     try:
         if req.format != "pcm16":
             raise HTTPException(status_code=400, detail="Only format 'pcm16' is supported")
+
+        if req.sampleRate != 16000 or req.channels != 1:
+            raise HTTPException(
+                status_code=422,
+                detail="Only 16kHz mono PCM16 is supported (sampleRate=16000, channels=1)",
+            )
         try:
             state = _store.start_session(req.sessionId, req.turnId, req.format, req.sampleRate, req.channels)
         except ValueError as e:
@@ -311,15 +326,36 @@ async def stt_session_finalize(asrSessionId: str, request: Request):
     _store.cleanup_expired()
     try:
         try:
-            result = _store.finalize(asrSessionId)
+            audio_bytes, fmt, sample_rate, channels, chunk_count = _store.finalize(asrSessionId)
         except SessionNotFound:
             raise HTTPException(status_code=404, detail="ASR session not found or expired")
         except AlreadyFinalized:
             raise HTTPException(status_code=409, detail="ASR session already finalized")
 
+        try:
+            backend = get_backend()
+        except NotImplementedError as e:
+            raise HTTPException(status_code=501, detail=str(e))
+
+        try:
+            result = backend.transcribe(
+                audio_bytes=audio_bytes,
+                fmt=fmt,
+                sample_rate=sample_rate,
+                channels=channels,
+            )
+        except AudioValidationError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.detail)
+
         logger.debug(
             "ASR session finalized",
-            extra=log_extra(requestId=request_id, corr=corr, service="recepai_asr_service", asrSessionId=asrSessionId),
+            extra=log_extra(
+                requestId=request_id,
+                corr=corr,
+                service="recepai_asr_service",
+                asrSessionId=asrSessionId,
+                chunks=chunk_count,
+            ),
         )
         return SttFinalizeResponse(**result)
     except HTTPException as e:

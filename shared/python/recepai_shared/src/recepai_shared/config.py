@@ -1,6 +1,8 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+from .local_config import load_local_config
+
 
 class VoiceStackSettings(BaseSettings):
     environment: str = Field(default="dev", description="Environment name, e.g. dev/staging/prod")
@@ -20,4 +22,5 @@ class VoiceStackSettings(BaseSettings):
 
 
 # Module-level settings instance
+load_local_config()
 settings = VoiceStackSettings()

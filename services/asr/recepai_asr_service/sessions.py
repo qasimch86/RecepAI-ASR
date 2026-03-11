@@ -113,7 +113,7 @@ class SessionStore:
         stability = min(0.95, 0.2 + 0.1 * s.chunk_count) if s.chunk_count > 0 else 0.2
         return partial_text, stability
 
-    def finalize(self, asr_session_id: str) -> Dict[str, Optional[int]]:
+    def finalize(self, asr_session_id: str) -> Tuple[bytes, str, int, int, int]:
         self.cleanup_expired()
         s = self._sessions.get(asr_session_id)
         if not s:
@@ -121,16 +121,6 @@ class SessionStore:
         if s.finalized:
             raise AlreadyFinalized()
 
-        total_bytes = len(s.audio)
-        text = f"[mock-asr final] bytes={total_bytes} format={s.format} sr={s.sample_rate} ch={s.channels} chunks={s.chunk_count}"
-        duration_ms: Optional[int] = None
-        if s.format == "pcm16" and s.channels > 0 and s.sample_rate > 0:
-            try:
-                total_samples = total_bytes / (2 * s.channels)
-                seconds = total_samples / s.sample_rate
-                duration_ms = int(seconds * 1000)
-            except Exception:
-                duration_ms = None
-
         s.finalized = True
-        return {"text": text, "confidence": 0.5, "provider": "mock", "durationMs": duration_ms}
+        audio_bytes = bytes(s.audio)
+        return audio_bytes, s.format, s.sample_rate, s.channels, s.chunk_count

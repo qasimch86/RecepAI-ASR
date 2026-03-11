@@ -12,4 +12,14 @@ Integration target: Designed to integrate with nopCommerce 4.9 and `Nop.Plugin.R
 High-level pipeline:
 Client -> VoiceGateway -> ASR -> LLM Orchestrator -> VoiceAgent plugin -> TTS -> Client.
 
+## Local secrets / API keys
+
+This repo expects secrets (for example `OPENAI_API_KEY`) to come from environment variables.
+
+For local development, you can put keys in `.recepai.config.json` (git-ignored) at the repo root:
+- Start from `recepai.config.example.json`
+- Put your real values in `.recepai.config.json`
+
+The Python services will load this file (if present) and populate missing environment variables on startup.
+
 Note: This repo currently contains placeholders only. Service logic and projects will be added later.

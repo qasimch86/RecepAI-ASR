@@ -1,0 +1,7 @@
+{
+  "env": {
+    "OPENAI_API_KEY": "<put-your-openai-key-here>",
+    "RECEPAI_LLM_MODEL": "gpt-4o-mini",
+    "RECEPAI_LOG_LEVEL": "INFO"
+  }
+}

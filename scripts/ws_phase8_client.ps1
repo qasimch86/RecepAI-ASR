@@ -304,7 +304,7 @@ Start-Sleep -Milliseconds 200
 
 # 4b) Send a follow-up message (same WS connection, new turnId)
 $turnId2 = [Guid]::NewGuid().ToString("N")
-$payloadUserText2 = @{ text = "Hello again! Please suggest 2 more items and ask another follow-up question." }
+$payloadUserText2 = @{ text = "Hello again! Please search for an SKU DS_VA3_PC." }
 $jsonUser2 = New-EnvelopeJson -Type "user_text" -SessionId $sessionId -TurnId $turnId2 -Payload $payloadUserText2
 Write-Host "SEND(user_text): $jsonUser2"
 Write-Host "  turnId=$turnId2"

@@ -9,7 +9,7 @@ from typing import AsyncIterator, Optional
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from recepai_shared import settings, get_logger
+from recepai_shared import settings, get_logger, load_local_config
 from recepai_shared.logging_utils import log_extra
 from openai import AsyncOpenAI
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
@@ -23,6 +23,9 @@ except Exception:  # pragma: no cover
 
 app = FastAPI(title="recepai_llm_orchestrator", version="0.1.0")
 logger = get_logger("recepai_llm_orchestrator")
+
+# Load local developer config (optional) before reading env vars.
+load_local_config()
 
 # Validate OPENAI_API_KEY at startup
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -47,7 +50,9 @@ else:
         ),
     )
 
-_openai_client = AsyncOpenAI(api_key=_OPENAI_API_KEY)
+_openai_client: Optional[AsyncOpenAI] = None
+if _OPENAI_API_KEY:
+    _openai_client = AsyncOpenAI(api_key=_OPENAI_API_KEY)
 _MODEL_NAME = os.getenv("RECEPAI_LLM_MODEL", "gpt-4o-mini")
 
 _BACKPRESSURE_WARN_MS = 2000
@@ -232,6 +237,11 @@ async def stream_llm_text(
     exactly one final authoritative chunk upon normal completion.
     Cancellation immediately stops streaming and prevents final emission.
     """
+    if not _openai_client:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not configured. Set OPENAI_API_KEY, or set RECEPAI_CONFIG_PATH to a JSON config containing env.OPENAI_API_KEY."
+        )
+
     # Log request start with safe preview
     user_text_preview = user_text[:60] + "..." if len(user_text) > 60 else user_text
     logger.info(
